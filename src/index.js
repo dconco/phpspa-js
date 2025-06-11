@@ -52,18 +52,6 @@
       }
    });
 
-   function runInlineScripts(container) {
-      const scripts = container.querySelectorAll(
-         "script[data-type='phpspa/script']"
-      );
-
-      scripts.forEach((script) => {
-         const newScript = document.createElement("script");
-         newScript.textContent = script.textContent;
-         document.head.appendChild(newScript).remove();
-      });
-   }
-
    window.addEventListener("popstate", (ev) => {
       const state = ev.state;
 
@@ -83,6 +71,7 @@
          //    phpspa.states[url] = [targetElement, targetElement.innerHTML];
          // }
          targetElement.innerHTML = state.content;
+         runInlineStyles(targetElement);
          runInlineScripts(targetElement);
       } else {
          phpspa.navigate(new URL(location.href), "replace");
@@ -168,29 +157,26 @@ class phpspa {
             keepalive: true,
          });
 
-         response.text().then((res) => {
-            try {
-               let json = JSON.parse(res);
-               phpspa.emit("load", { route: url, success: true, error: false });
-               call(json);
-            } catch (e) {
-               let data = res ?? "";
-               phpspa.emit("load", { route: url, success: false, error: e });
-               call(data);
-            }
-         }).catch(e => phpspa.emit("load", { route: url, success: false, error: e }));
-
-         function runInlineScripts(container) {
-            const scripts = container.querySelectorAll(
-               "script[data-type='phpspa/script']"
+         response
+            .text()
+            .then((res) => {
+               try {
+                  let json = JSON.parse(res);
+                  phpspa.emit("load", {
+                     route: url,
+                     success: true,
+                     error: false,
+                  });
+                  call(json);
+               } catch (e) {
+                  let data = res ?? "";
+                  phpspa.emit("load", { route: url, success: false, error: e });
+                  call(data);
+               }
+            })
+            .catch((e) =>
+               phpspa.emit("load", { route: url, success: false, error: e })
             );
-
-            scripts.forEach((script) => {
-               const newScript = document.createElement("script");
-               newScript.textContent = script.textContent;
-               document.head.appendChild(newScript).remove();
-            });
-         }
 
          function call(data) {
             if (
@@ -235,9 +221,11 @@ class phpspa {
             if (hashedElement) {
                scroll({
                   top: hashedElement.offsetTop,
+                  left: hashedElement.offsetLeft,
                });
             }
 
+            runInlineStyles(targetElement);
             runInlineScripts(targetElement);
          }
       })();
@@ -354,6 +342,72 @@ class phpspa {
          }
       }
    }
+
+   static setState(stateKey, value) {
+      return new Promise(async (resolve, reject) => {
+         let currentScroll = {
+            top: scrollY,
+            left: scrollX,
+         };
+
+         const url = new URL(location.href);
+         phpspa.emit("beforeload", { route: url });
+
+         const response = await fetch(url, {
+            method: "PHPSPA_GET",
+            body: JSON.stringify({ stateKey, value }),
+            mode: "same-origin",
+            keepalive: true,
+         });
+
+         response
+            .text()
+            .then((res) => {
+               try {
+                  let json = JSON.parse(res);
+                  resolve();
+                  call(json);
+               } catch (e) {
+                  let data = res ?? "";
+                  reject(e);
+                  call(data);
+               }
+            })
+            .catch((e) => {
+               reject(e);
+            });
+
+         function call(data) {
+            if (
+               "string" === typeof data?.title ||
+               "number" === typeof data?.title
+            ) {
+               document.title = data.title;
+            }
+
+            let targetElement =
+               document.getElementById(data?.targetID) ??
+               document.getElementById(history.state?.targetID) ??
+               document.body;
+
+            targetElement.innerHTML = data?.content ?? data;
+
+            const stateData = {
+               url: url?.href ?? url,
+               title: data?.title ?? document.title,
+               targetID: data?.targetID ?? targetElement.id,
+               content: data?.content ?? data,
+            };
+
+            history.replaceState(stateData, stateData.title, url);
+
+            scroll(currentScroll);
+
+            runInlineStyles(targetElement);
+            runInlineScripts(targetElement);
+         }
+      });
+   }
 }
 
 (function () {
@@ -361,3 +415,25 @@ class phpspa {
       window.phpspa = phpspa;
    }
 })();
+
+function runInlineScripts(container) {
+   const scripts = container.querySelectorAll(
+      "script[data-type='phpspa/script']"
+   );
+
+   scripts.forEach((script) => {
+      const newScript = document.createElement("script");
+      newScript.textContent = `(function() {\n${script.textContent}\n})();`;
+      document.head.appendChild(newScript).remove();
+   });
+}
+
+function runInlineStyles(container) {
+   const styles = container.querySelectorAll("style[data-type='phpspa/css']");
+
+   styles.forEach((style) => {
+      const newStyle = document.createElement("style");
+      newStyle.textContent = style.textContent;
+      document.head.appendChild(newStyle).remove();
+   });
+}
