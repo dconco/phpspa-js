@@ -1,0 +1,31 @@
+{
+  "name": "phpspa-js",
+  "version": "1.0.0",
+  "description": "A lightweight, component-based PHP library for building Single Page Applications (SPAs) without relying on heavy frontend frameworks.",
+  "main": "src/index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dconco/phpspa-js.git"
+  },
+  "keywords": [
+    "php",
+    "spa",
+    "phpspa",
+    "js",
+    "jsx",
+    "javascript",
+    "component-library"
+  ],
+  "author": "Dave Conco",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/dconco/phpspa/issues"
+  },
+  "homepage": "https://github.com/dconco/phpspa-js#readme"
+}
