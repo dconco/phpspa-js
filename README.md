@@ -13,7 +13,7 @@ You can include `phpspa-js` either via **CDN** or host it yourself.
 ### ✅ CDN (Recommended)
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/dconco/phpspa-js/dist/phpspa.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/phpspa-js/dist/phpspa.min.js"></script>
 ````
 
 ### 🔧 Manual (GitHub)
@@ -126,7 +126,7 @@ These are **dynamically executed** when the component is loaded via `phpspa.navi
 Components can also define scoped styles:
 
 ```html
-<style data-type="phpspa/style">
+<style data-type="phpspa/css">
     .button { color: red; }
 </style>
 ```
