@@ -13,7 +13,7 @@ You can include `phpspa-js` either via **CDN** or host it yourself.
 ### ✅ CDN (Recommended)
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/phpspa-js/dist/phpspa.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/phpspa-js"></script>
 ````
 
 ### 🔧 Manual (GitHub)
