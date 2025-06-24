@@ -167,6 +167,15 @@ This script is tightly coupled with [phpSPA (PHP)](https://github.com/dconco/php
 
 ---
 
+## 📘 Docs & Links
+
+* GitHub: [dconco/phpspa](https://github.com/dconco/phpspa)
+* JS Engine: [dconco/phpspa-js](https://github.com/dconco/phpspa-js)
+* Website: [https://phpspa.readthedocs.io](https://phpspa.readthedocs.io)
+* License: MIT
+
+---
+
 ## 📜 License
 
 MIT © Dave Conco
