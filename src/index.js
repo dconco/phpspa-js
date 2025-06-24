@@ -25,7 +25,7 @@
  * - This library assumes server-rendered HTML responses with placeholder target IDs.
  *
  * @author Dave Conco
- * @version 1.1.1
+ * @version 1.1.2
  * @license MIT
  */
 (function () {
@@ -62,8 +62,7 @@
             document.getElementById(state.targetID) ?? document.body;
 
          targetElement.innerHTML = state.content;
-         runInlineStyles(targetElement);
-         runInlineScripts(targetElement);
+         phpspa.runAll(targetElement);
       } else {
          phpspa.navigate(new URL(location.href), "replace");
       }
@@ -78,7 +77,6 @@
  *
  * @class phpspa
  *
- * @property {?Function} onLoad - Optional callback to be executed when the SPA is loaded.
  * @property {Object} _events - Internal event registry for custom event handling.
  *
  * @method navigate
@@ -134,80 +132,127 @@ class phpspa {
     * @fires phpspa#load - Emitted after attempting to load the new route, with success or error status.
     */
    static navigate(url, state = "push") {
-      (async () => {
-         // let initialPath = location.pathname;
-         phpspa.emit("beforeload", { route: url });
+      phpspa.emit("beforeload", { route: url });
 
-         const response = await fetch(url, {
-            method: "PHPSPA_GET",
-            mode: "same-origin",
-            keepalive: true,
-         });
+      fetch(url, {
+         method: "PHPSPA_GET",
+         mode: "same-origin",
+         keepalive: true,
+      })
+         .then((response) => {
+            response
+               .text()
+               .then((res) => {
+                  let data;
 
-         response
-            .text()
-            .then((res) => {
-               try {
-                  let json = JSON.parse(res);
+                  if (res && res.trim().startsWith("{")) {
+                     try {
+                        data = JSON.parse(res);
+                     } catch (e) {
+                        data = res;
+                     }
+                  } else {
+                     data = res || ""; // Handle empty responses
+                  }
+
+                  // Emit success event
                   phpspa.emit("load", {
                      route: url,
                      success: true,
                      error: false,
                   });
-                  call(json);
-               } catch (e) {
-                  let data = res ?? "";
-                  phpspa.emit("load", { route: url, success: false, error: e });
+
                   call(data);
-               }
-            })
-            .catch((e) =>
-               phpspa.emit("load", { route: url, success: false, error: e })
-            );
+               })
+               .catch((e) => callError(e));
+         })
+         .catch((e) => callError(e));
 
-         function call(data) {
-            if (
-               "string" === typeof data?.title ||
-               "number" === typeof data?.title
-            ) {
-               document.title = data.title;
-            }
+      function callError(e) {
+         // Check if the error contains a response (e.g., HTTP 4xx/5xx with a body)
+         if (e.response) {
+            // Try extracting text/JSON from the error response
+            e.response
+               .text()
+               .then((fallbackRes) => {
+                  let data;
+                  try {
+                     // If it looks like JSON, parse it
+                     data = fallbackRes.trim().startsWith("{")
+                        ? JSON.parse(fallbackRes)
+                        : fallbackRes;
+                  } catch (parseError) {
+                     // Fallback to raw text if parsing fails
+                     data = fallbackRes;
+                  }
 
-            let targetElement =
-               document.getElementById(data?.targetID) ??
-               document.getElementById(history.state?.targetID) ??
-               document.body;
-
-            targetElement.innerHTML = data?.content ?? data;
-
-            const stateData = {
-               url: url?.href ?? url,
-               title: data?.title ?? document.title,
-               targetID: data?.targetID ?? targetElement.id,
-               content: data?.content ?? data,
-            };
-
-            if (state === "push") {
-               history.pushState(stateData, stateData.title, url);
-            } else if (state === "replace") {
-               history.replaceState(stateData, stateData.title, url);
-            }
-
-            let hashedElement = document.getElementById(
-               url?.hash?.substring(1)
-            );
-
-            if (hashedElement) {
-               scroll({
-                  top: hashedElement.offsetTop,
-                  left: hashedElement.offsetLeft,
+                  phpspa.emit("load", {
+                     route: url,
+                     success: false,
+                     error: e.message || "Server returned an error",
+                     fallbackData: data, // Include the parsed/raw data
+                  });
+                  call(data || ""); // Pass the fallback data
+               })
+               .catch(() => {
+                  // Failed to read error response body
+                  phpspa.emit("load", {
+                     route: url,
+                     success: false,
+                     error: e.message || "Failed to read error response",
+                  });
+                  call("");
                });
-            }
-
-            runInlineStyles(targetElement);
-            runInlineScripts(targetElement);
+         } else {
+            // No response attached (network error, CORS, etc.)
+            phpspa.emit("load", {
+               route: url,
+               success: false,
+               error: e.message || "No connection to server",
+            });
+            call("");
          }
-      })();
+      }
+
+      function call(data) {
+         if (
+            "string" === typeof data?.title ||
+            "number" === typeof data?.title
+         ) {
+            document.title = data.title;
+         }
+
+         let targetElement =
+            document.getElementById(data?.targetID) ??
+            document.getElementById(history.state?.targetID) ??
+            document.body;
+
+         targetElement.innerHTML = data?.content ?? data;
+
+         const stateData = {
+            url: url?.href ?? url,
+            title: data?.title ?? document.title,
+            targetID: data?.targetID ?? targetElement.id,
+            content: data?.content ?? data,
+         };
+
+         if (state === "push") {
+            history.pushState(stateData, stateData.title, url);
+         } else if (state === "replace") {
+            history.replaceState(stateData, stateData.title, url);
+         }
+
+         let hashedElement = document.getElementById(url?.hash?.substring(1));
+
+         if (hashedElement) {
+            scroll({
+               top: hashedElement.offsetTop,
+               left: hashedElement.offsetLeft,
+            });
+         }
+
+         phpspa.runAll(targetElement);
+      }
    }
 
    /**
@@ -286,36 +331,79 @@ class phpspa {
     *   .catch(err => console.error('Failed to update state:', err));
     */
    static setState(stateKey, value) {
-      return new Promise(async (resolve, reject) => {
+      return new Promise((resolve, reject) => {
          let currentScroll = {
             top: scrollY,
             left: scrollX,
          };
          const url = new URL(location.href);
 
-         const response = await fetch(url, {
+         fetch(url, {
             method: "PHPSPA_GET",
             body: JSON.stringify({ stateKey, value }),
             mode: "same-origin",
+            redirect: "follow",
             keepalive: true,
-         });
+         })
+            .then((response) => {
+               response
+                  .text()
+                  .then((res) => {
+                     let data;
 
-         response
-            .text()
-            .then((res) => {
-               try {
-                  let json = JSON.parse(res);
-                  resolve();
-                  call(json);
-               } catch (e) {
-                  let data = res ?? "";
-                  reject(e);
-                  call(data);
-               }
+                     if (res && res.trim().startsWith("{")) {
+                        try {
+                           data = JSON.parse(res);
+                        } catch (e) {
+                           data = res;
+                        }
+                     } else {
+                        data = res || ""; // Handle empty responses
+                     }
+
+                     resolve();
+                     call(data);
+                  })
+                  .catch((e) => {
+                     reject(e.message);
+                     callError(e);
+                  });
             })
             .catch((e) => {
-               reject(e);
+               reject(e.message);
+               callError(e);
             });
+
+         function callError(e) {
+            // Check if the error contains a response (e.g., HTTP 4xx/5xx with a body)
+            if (e.response) {
+               // Try extracting text/JSON from the error response
+               e.response
+                  .text()
+                  .then((fallbackRes) => {
+                     let data;
+
+                     try {
+                        // If it looks like JSON, parse it
+                        data = fallbackRes.trim().startsWith("{")
+                           ? JSON.parse(fallbackRes)
+                           : fallbackRes;
+                     } catch (parseError) {
+                        // Fallback to raw text if parsing fails
+                        data = fallbackRes;
+                     }
+
+                     call(data || ""); // Pass the fallback data
+                  })
+                  .catch(() => {
+                     // Failed to read error response body
+                     call("");
+                  });
+            } else {
+               // No response attached (network error, CORS, etc.)
+               call("");
+            }
+         }
 
          function call(data) {
             if (
@@ -342,11 +430,43 @@ class phpspa {
             history.replaceState(stateData, stateData.title, url);
 
             scroll(currentScroll);
-
-            runInlineStyles(targetElement);
-            runInlineScripts(targetElement);
          }
       });
+   }
+
+   static runAll(container) {
+      function runInlineScripts(container) {
+         const scripts = container.querySelectorAll(
+            "script[data-type='phpspa/script']"
+         );
+
+         scripts.forEach((script) => {
+            const newScript = document.createElement("script");
+            newScript.textContent = `(function() {\n${script.textContent}\n})();`;
+            document.head.appendChild(newScript).remove();
+         });
+      }
+
+      function runInlineStyles(container) {
+         const styles = container.querySelectorAll(
+            "style[data-type='phpspa/css']"
+         );
+
+         styles.forEach((style) => {
+            const newStyle = document.createElement("style");
+            newStyle.textContent = style.textContent;
+            document.head.appendChild(newStyle).remove();
+         });
+      }
+
+      runInlineStyles(container);
+      runInlineScripts(container);
+   }
+}
+
+if (typeof setState !== "function") {
+   function setState(stateKey, value) {
+      return phpspa.setState(stateKey, value);
    }
 }
 
@@ -355,25 +475,3 @@ class phpspa {
       window.phpspa = phpspa;
    }
 })();
-
-function runInlineScripts(container) {
-   const scripts = container.querySelectorAll(
-      "script[data-type='phpspa/script']"
-   );
-
-   scripts.forEach((script) => {
-      const newScript = document.createElement("script");
-      newScript.textContent = `(function() {\n${script.textContent}\n})();`;
-      document.head.appendChild(newScript).remove();
-   });
-}
-
-function runInlineStyles(container) {
-   const styles = container.querySelectorAll("style[data-type='phpspa/css']");
-
-   styles.forEach((style) => {
-      const newStyle = document.createElement("style");
-      newStyle.textContent = style.textContent;
-      document.head.appendChild(newStyle).remove();
-   });
-}

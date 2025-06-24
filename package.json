@@ -1,6 +1,6 @@
 {
   "name": "phpspa-js",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "A lightweight, component-based PHP library for building Single Page Applications (SPAs) without relying on heavy frontend frameworks.",
   "main": "dist/phpspa.min.js",
   "scripts": {
