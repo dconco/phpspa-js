@@ -452,6 +452,7 @@ class phpspa {
 
 				targetElement.innerHTML = data?.content ?? data
 
+            phpspa.runAll(targetElement)
 				scroll(currentScroll)
 			}
 		})
@@ -471,7 +472,7 @@ class phpspa {
 					executedScripts.add(content)
 					const newScript = document.createElement('script')
 					newScript.textContent = `(function() {\n${script.textContent}\n})();`
-					document.head.appendChild(newScript)
+					document.head.appendChild(newScript).remove()
 				}
 			})
 		}
