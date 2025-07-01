@@ -462,11 +462,17 @@ class phpspa {
 			const scripts = container.querySelectorAll(
 				"script[data-type='phpspa/script']"
 			)
+			const executedScripts = new Set()
 
 			scripts.forEach(script => {
-				const newScript = document.createElement('script')
-			   newScript.textContent = `(function() {\n${script.textContent}\n})();`
-				document.head.appendChild(newScript).remove()
+				const content = script.textContent.trim()
+
+				if (!executedScripts.has(content)) {
+					executedScripts.add(content)
+					const newScript = document.createElement('script')
+					newScript.textContent = `(function() {\n${script.textContent}\n})();`
+					document.head.appendChild(newScript)
+				}
 			})
 		}
 
@@ -475,10 +481,17 @@ class phpspa {
 				"style[data-type='phpspa/css']"
 			)
 
+			const executedStyle = new Set()
+
 			styles.forEach(style => {
-				const newStyle = document.createElement('style')
-				newStyle.textContent = style.textContent
-				document.head.appendChild(newStyle).remove()
+				const content = style.textContent.trim()
+
+				if (!executedStyle.has(content)) {
+					executedStyle.add(content)
+					const newStyle = document.createElement('style')
+					newStyle.textContent = style.textContent
+					document.head.appendChild(newStyle).remove()
+				}
 			})
 		}
 
