@@ -1,28 +1,28 @@
 {
-  "name": "phpspa-js",
-  "version": "1.1.5",
-  "description": "A lightweight, component-based PHP library for building Single Page Applications (SPAs) without relying on heavy frontend frameworks.",
-  "main": "dist/phpspa.min.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/dconco/phpspa-js.git"
-  },
-  "keywords": [
-    "php",
-    "spa",
-    "phpspa",
-    "js",
-    "jsx",
-    "javascript",
-    "component-library"
-  ],
-  "author": "Dave Conco",
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/dconco/phpspa/issues"
-  },
-  "homepage": "https://phpspa.readthedocs.io"
+	"name": "phpspa-js",
+	"version": "1.1.6",
+	"description": "A lightweight, component-based PHP library for building Single Page Applications (SPAs) without relying on heavy frontend frameworks.",
+	"main": "dist/phpspa.min.js",
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/dconco/phpspa-js.git"
+	},
+	"keywords": [
+		"php",
+		"spa",
+		"phpspa",
+		"js",
+		"jsx",
+		"javascript",
+		"component-library"
+	],
+	"author": "Dave Conco",
+	"license": "MIT",
+	"bugs": {
+		"url": "https://github.com/dconco/phpspa/issues"
+	},
+	"homepage": "https://phpspa.readthedocs.io"
 }

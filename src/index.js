@@ -25,7 +25,7 @@
  * - This library assumes server-rendered HTML responses with placeholder target IDs.
  *
  * @author Dave Conco
- * @version 1.1.3
+ * @version 1.1.6
  * @license MIT
  */
 ;(function () {
@@ -465,8 +465,7 @@ class phpspa {
 
 			scripts.forEach(script => {
 				const newScript = document.createElement('script')
-				// newScript.textContent = `(function() {\n${script.textContent}\n})();`
-				newScript.textContent = script.textContent
+			   newScript.textContent = `(function() {\n${script.textContent}\n})();`
 				document.head.appendChild(newScript).remove()
 			})
 		}
