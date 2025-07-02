@@ -452,7 +452,7 @@ class phpspa {
 
 				targetElement.innerHTML = data?.content ?? data
 
-            phpspa.runAll(targetElement)
+				phpspa.runAll(targetElement)
 				scroll(currentScroll)
 			}
 		})
