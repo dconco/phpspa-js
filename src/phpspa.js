@@ -1,48 +1,104 @@
 /**
- * phpSPA JavaScript Engine
+ * ===========================================================
+ *   _____    _             _____  _____
+ *  |  __ \  | |           / ____||  __ \  /\    
+ *  | |__) | | |__   _ __ | (___  | |__) |/  \   
+ *  |  ___/  | '_ \ | '_ \ \___ \ |  ___// /\ \  
+ *  | |      | | | || |_) |____) || |   / ____ \ 
+ *  |_|      |_| |_|| .__/|_____/ |_|  /_/    \_\
+ *                  | |
+ *                  |_|
+ * 
+ * ===========================================================
+ * 
+ * PhpSPA JavaScript Engine
  *
  * A lightweight JavaScript engine for PHP-powered single-page applications.
  * Handles SPA-style navigation, content replacement, and lifecycle events
- * without full page reloads. Designed to pair with the `phpSPA` PHP framework.
- *
- * Features:
- * - `phpspa.navigate(url, state = "push")`: Navigate to a new route via AJAX.
- * - `phpspa.back()` / `phpspa.forward()`: Navigate browser history.
- * - `phpspa.on("beforeload" | "load", callback)`: Lifecycle event hooks.
- * - Auto-replaces DOM target with component content and updates `<title>` and `<meta>`.
- * - Executes inline component scripts marked as `<script data-type="phpspa/script">`.
- * - Built-in scroll position restoration across route changes.
- *
- * Example Usage:
- * ```js
- * phpspa.on("beforeload", ({ route }) => showSpinner());
- * phpspa.on("load", ({ success }) => hideSpinner());
- * phpspa.navigate("/profile");
- * ```
+ * without full page reloads. Designed to pair with the `PhpSPA` PHP framework.
  *
  * Note:
  * - All scripts and logic must be attached per component using `$component->script(...)`.
  * - This library assumes server-rendered HTML responses with placeholder target IDs.
  *
- * @author Dave Conco
- * @version 1.1.7
+ * @author Dave Conco <concodave@gmail.com>
+ * @link https://github.com/dconco/phpspa-js
+ * @version 2.0.0
  * @license MIT
  */
+
+/**
+ * UTF-8 safe base64 encoding function
+ * Handles Unicode characters that btoa cannot process
+ * 
+ * @param {string} str - String to encode
+ * @returns {string} Base64 encoded string
+ */
+function utf8ToBase64(str) {
+   try {
+      // First try the native btoa for performance
+      return btoa(str);
+   } catch (e) {
+      // If btoa fails (due to non-Latin1 characters), use UTF-8 safe encoding
+      try {
+         // Modern replacement for unescape(encodeURIComponent(str))
+         const utf8Bytes = new TextEncoder().encode(str);
+         const binaryString = Array.from(utf8Bytes, byte => String.fromCharCode(byte)).join('');
+         return btoa(binaryString);
+      } catch (fallbackError) {
+         // Final fallback: encode each character individually
+         return btoa(
+            str.split('').map(function(c) {
+               return String.fromCharCode(c.charCodeAt(0) & 0xff);
+            }).join('')
+         );
+      }
+   }
+}
+
+/**
+ * UTF-8 safe base64 decoding function
+ * Handles Unicode characters that atob cannot process
+ * 
+ * @param {string} str - Base64 encoded string to decode  
+ * @returns {string} Decoded string
+ */
+function base64ToUtf8(str) {
+   try {
+      // Try modern UTF-8 safe decoding first
+      const binaryString = atob(str);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+         bytes[i] = binaryString.charCodeAt(i);
+      }
+      return new TextDecoder().decode(bytes);
+   } catch (e) {
+      // Fallback to regular atob
+      return atob(str);
+   }
+}
 (function () {
    /**
-    * Initialize phpSPA when DOM is ready
+    * Initialize PhpSPA when DOM is ready
     * Sets up the initial browser history state with the current page content
     */
    window.addEventListener("DOMContentLoaded", () => {
       const targetElement = document.querySelector("[data-phpspa-target]");
+
+      RuntimeManager.emit('load', {
+         route: location.href,
+         success: true,
+         error: false
+      });
 
       if (targetElement) {
          // Create initial state object with current page data
          const initialState = {
             url: location.href,
             title: document.title,
-            targetId: targetElement.parentElement.id,
-            content: btoa(targetElement.innerHTML), // Base64 encode HTML content
+            targetID: targetElement.id,
+            content: targetElement.innerHTML,
+            root: true,
          };
 
          // Check if component has auto-reload functionality
@@ -52,7 +108,7 @@
             );
          }
 
-         // Replace current history state with phpSPA data
+         // Replace current history state with PhpSPA data
          RuntimeManager.replaceState(
             initialState,
             document.title,
@@ -67,7 +123,7 @@
    });
 
    /**
-    * Handle clicks on phpSPA navigation links
+    * Handle clicks on PhpSPA navigation links
     * Intercepts clicks on elements with data-type="phpspa-link-tag"
     * and routes them through the SPA navigation system
     */
@@ -78,7 +134,7 @@
          // Prevent default browser navigation
          event.preventDefault();
 
-         // Navigate using phpSPA system
+         // Navigate using PhpSPA system
          phpspa.navigate(new URL(spaLink.href, location.href), "push");
       }
    });
@@ -90,40 +146,61 @@
    window.addEventListener("popstate", (event) => {
       const navigationState = event.state;
 
-      // Check if we have valid phpSPA state data
-      if (
-         navigationState &&
-         navigationState.url &&
-         navigationState.targetId &&
-         navigationState.content
-      ) {
+      RuntimeManager.emit('beforeload', { route: location.href });
+
+      // Enable automatic scroll restoration
+      history.scrollRestoration = "auto";
+
+      // Check if we have valid PhpSPA state data
+      if (navigationState && navigationState.content) {
          // Restore page title
          document.title = navigationState.title ?? document.title;
 
          // Find target container or fallback to body
          const targetContainer =
-            document.getElementById(navigationState.targetId) ?? document.body;
+            document.getElementById(navigationState.targetID) ?? document.body;
 
          // Decode and restore HTML content
-         targetContainer.innerHTML = atob(navigationState.content);
-
-         // Clear old executed scripts cache
-         RuntimeManager.clearExecutedScripts();
-
-         // Execute any inline scripts and styles in the restored content
-         RuntimeManager.runAll(targetContainer);
-
-         // Restart auto-reload timer if needed
-         if (typeof navigationState.reloadTime !== "undefined") {
-            setTimeout(phpspa.reloadComponent, navigationState.reloadTime);
+         const updateDOM = () => {
+            targetContainer.innerHTML = navigationState.content;
          }
+
+         const completedDOMUpdate = () => {
+            // Clear old executed scripts cache
+            RuntimeManager.clearExecutedScripts();
+
+            // Execute any inline scripts and styles in the restored content
+            RuntimeManager.runAll(navigationState.root ? document.body : targetContainer);
+
+            // Restart auto-reload timer if needed
+            if (typeof navigationState.reloadTime !== "undefined") {
+               setTimeout(phpspa.reloadComponent, navigationState.reloadTime);
+            }
+
+            RuntimeManager.emit('load', {
+               route: location.href,
+               success: true,
+               error: false
+            });
+         }
+
+         if (document.startViewTransition) {
+            document.startViewTransition(updateDOM).finished.then(completedDOMUpdate).catch((reason) => {
+               RuntimeManager.emit('load', {
+                  route: location.href,
+                  success: false,
+                  error: reason || 'Unknown error during view transition',
+               });
+            });
+         } else {
+            updateDOM();
+            completedDOMUpdate();
+         }
+
       } else {
          // No valid state found - navigate to current URL to refresh
          phpspa.navigate(new URL(location.href), "replace");
       }
-
-      // Enable automatic scroll restoration
-      history.scrollRestoration = "auto";
    });
 })();
 
@@ -174,10 +251,11 @@ class phpspa {
       // Emit beforeload event for loading indicators
       RuntimeManager.emit("beforeload", { route: url });
 
-      // Fetch content from the server with phpSPA headers
+      // Fetch content from the server with PhpSPA headers
       fetch(url, {
          headers: {
             "X-Requested-With": "PHPSPA_REQUEST",
+            "X-Phpspa-Target": "navigate",
          },
          mode: "same-origin",
          redirect: "follow",
@@ -199,13 +277,6 @@ class phpspa {
                   } else {
                      responseData = responseText || ""; // Handle empty responses
                   }
-
-                  // Emit successful load event
-                  RuntimeManager.emit("load", {
-                     route: url,
-                     success: true,
-                     error: false,
-                  });
 
                   processResponse(responseData);
                })
@@ -235,32 +306,34 @@ class phpspa {
                      errorData = fallbackResponse;
                   }
 
+                  processResponse(errorData || "");
+
                   RuntimeManager.emit("load", {
                      route: url,
                      success: false,
                      error: error.message || "Server returned an error",
                      data: errorData,
                   });
-
-                  processResponse(errorData || "");
                })
                .catch(() => {
+                  processResponse("");
+
                   // Failed to read error response body
                   RuntimeManager.emit("load", {
                      route: url,
                      success: false,
                      error: error.message || "Failed to read error response",
                   });
-                  processResponse("");
                });
          } else {
+            processResponse("");
+
             // Network error, same-origin issue, or other connection problems
             RuntimeManager.emit("load", {
                route: url,
                success: false,
                error: error.message || "No connection to server",
             });
-            processResponse("");
          }
       }
 
@@ -284,16 +357,18 @@ class phpspa {
             document.body;
 
          // Update content - decode base64 if provided, otherwise use raw data
-         targetElement.innerHTML = responseData?.content
-            ? atob(responseData.content)
-            : responseData;
+         const updateDOM = () => {
+            targetElement.innerHTML = responseData?.content
+               ? responseData.content
+               : responseData;
+         }
 
          // Prepare state data for browser history
          const stateData = {
             url: url?.href ?? url,
             title: responseData?.title ?? document.title,
             targetID: responseData?.targetID ?? targetElement.id,
-            content: responseData?.content ?? btoa(responseData),
+            content: responseData?.content ?? responseData,
          };
 
          // Include reload time if specified
@@ -301,32 +376,57 @@ class phpspa {
             stateData.reloadTime = responseData.reloadTime;
          }
 
-         // Update browser history
-         if (state === "push") {
-            RuntimeManager.pushState(stateData, stateData.title, url);
-         } else if (state === "replace") {
-            RuntimeManager.replaceState(stateData, stateData.title, url);
-         }
+         const completedDOMUpdate = () => {
+            // Update browser history
+            if (state === "push") {
+               RuntimeManager.pushState(stateData, stateData.title, url);
+            } else if (state === "replace") {
+               RuntimeManager.replaceState(stateData, stateData.title, url);
+            }
 
-         // Handle URL fragments (hash navigation)
-         const hashElement = document.getElementById(url?.hash?.substring(1));
+            // Handle URL fragments (hash navigation)
+            const hashElement = document.getElementById(url?.hash?.substring(1));
 
-         if (hashElement) {
-            scroll({
-               top: hashElement.offsetTop,
-               left: hashElement.offsetLeft,
+            if (hashElement) {
+               scroll({
+                  top: hashElement.offsetTop,
+                  left: hashElement.offsetLeft,
+               });
+            } else {
+               scroll(0, 0); // Scroll to top if no hash or element not found
+            }
+
+            // Clear old executed scripts cache
+            RuntimeManager.clearExecutedScripts();
+
+            // Execute any inline scripts and styles in the new content
+            RuntimeManager.runAll(targetElement);
+            
+
+            // Emit successful load event
+            RuntimeManager.emit("load", {
+               route: url,
+               success: true,
+               error: false,
             });
+
+            // Set up auto-reload if specified
+            if (typeof responseData.reloadTime !== "undefined") {
+               setTimeout(phpspa.reloadComponent, responseData.reloadTime);
+            }
          }
 
-         // Clear old executed scripts cache
-         RuntimeManager.clearExecutedScripts();
-
-         // Execute any inline scripts and styles in the new content
-         RuntimeManager.runAll(targetElement);
-
-         // Set up auto-reload if specified
-         if (typeof responseData.reloadTime !== "undefined") {
-            setTimeout(phpspa.reloadComponent, responseData.reloadTime);
+         if (document.startViewTransition) {
+            document.startViewTransition(updateDOM).finished.then(completedDOMUpdate).catch((reason) => {
+               RuntimeManager.emit('load', {
+                  route: url,
+                  success: false,
+                  error: reason || 'Unknown error during view transition',
+               });
+            });
+         } else {
+            updateDOM();
+            completedDOMUpdate();
          }
       }
    }
@@ -396,7 +496,7 @@ class phpspa {
          fetch(currentUrl, {
             headers: {
                "X-Requested-With": "PHPSPA_REQUEST",
-               Authorization: `Bearer ${btoa(statePayload)}`,
+               Authorization: `Bearer ${utf8ToBase64(statePayload)}`,
             },
             mode: "same-origin",
             redirect: "follow",
@@ -480,13 +580,27 @@ class phpspa {
                document.getElementById(history.state?.targetID) ??
                document.body;
 
-            targetElement.innerHTML = responseData?.content
-               ? atob(responseData.content)
-               : responseData;
+            const updateDOM = () => {
+               targetElement.innerHTML = responseData?.content
+                  ? responseData.content
+                  : responseData;
+            };
 
-            // Execute scripts and styles, then restore scroll position
-            RuntimeManager.runAll(targetElement);
-            scroll(currentScroll);
+            const completedDOMUpdate = () => {
+               // Clear old executed scripts cache
+               RuntimeManager.clearExecutedScripts();
+
+               // Execute scripts and styles, then restore scroll position
+               RuntimeManager.runAll(targetElement);
+               scroll(currentScroll);
+            }
+
+            if (document.startViewTransition) {
+               document.startViewTransition(updateDOM).finished.then(completedDOMUpdate);
+            } else {
+               updateDOM();
+               completedDOMUpdate();
+            }
          }
       });
    }
@@ -585,21 +699,32 @@ class phpspa {
             document.getElementById(responseData?.targetID) ??
             document.getElementById(history.state?.targetID) ??
             document.body;
+         
+         const updateDOM = () => {
+            targetElement.innerHTML = responseData?.content
+               ? responseData.content
+               : responseData;
+         }
 
-         targetElement.innerHTML = responseData?.content
-            ? atob(responseData.content)
-            : responseData;
+         const completedDOMUpdate = () => {
+            // Clear old executed scripts cache
+            RuntimeManager.clearExecutedScripts();
 
-         // Clear old executed scripts cache
-         RuntimeManager.clearExecutedScripts();
+            // Execute scripts and restore scroll
+            RuntimeManager.runAll(targetElement);
+            scroll(currentScroll);
 
-         // Execute scripts and restore scroll
-         RuntimeManager.runAll(targetElement);
-         scroll(currentScroll);
+            // Set up next auto-reload if specified
+            if (typeof responseData.reloadTime !== "undefined") {
+               setTimeout(phpspa.reloadComponent, responseData.reloadTime);
+            }
+         }
 
-         // Set up next auto-reload if specified
-         if (typeof responseData.reloadTime !== "undefined") {
-            setTimeout(phpspa.reloadComponent, responseData.reloadTime);
+         if (document.startViewTransition) {
+            document.startViewTransition(updateDOM).finished.then(completedDOMUpdate);
+         } else {
+            updateDOM();
+            completedDOMUpdate();
          }
       }
    }
@@ -620,7 +745,7 @@ class phpspa {
          const response = await fetch(currentUrl, {
             headers: {
                "X-Requested-With": "PHPSPA_REQUEST",
-               Authorization: `Bearer ${btoa(callPayload)}`,
+               Authorization: `Bearer ${utf8ToBase64(callPayload)}`,
             },
             mode: "same-origin",
             redirect: "follow",
@@ -635,7 +760,7 @@ class phpspa {
             try {
                responseData = JSON.parse(responseText);
                responseData = responseData?.response
-                  ? JSON.parse(atob(responseData.response))
+                  ? JSON.parse(responseData.response)
                   : responseData;
             } catch (parseError) {
                responseData = responseText;
@@ -658,7 +783,7 @@ class phpspa {
                      : fallbackResponse;
 
                   errorData = errorData?.response
-                     ? JSON.parse(atob(errorData.response))
+                     ? JSON.parse(errorData.response)
                      : errorData;
                } catch (parseError) {
                   errorData = fallbackResponse;
@@ -677,10 +802,10 @@ class phpspa {
 }
 
 /**
- * Runtime Manager for phpSPA
+ * Runtime Manager for PhpSPA
  *
  * Handles script execution, style injection, event management, and browser history
- * for the phpSPA framework. Uses an obscure class name to avoid conflicts.
+ * for the PhpSPA framework. Uses an obscure class name to avoid conflicts.
  *
  * @class RuntimeManager
  */
@@ -698,6 +823,16 @@ class RuntimeManager {
     * @private
     */
    static executedStyles = new Set();
+
+   /**
+    * A static cache object that stores processed script content to avoid redundant processing.
+    * Used to improve performance by caching scripts that have already been processed or compiled.
+    *
+    * @static
+    * @type {Object<string, string>}
+    * @memberof RuntimeManager
+    */
+   static ScriptsCachedContent = {};
 
    /**
     * Internal event registry for custom events
@@ -718,6 +853,7 @@ class RuntimeManager {
    static runAll(container) {
       this.runInlineScripts(container);
       this.runInlineStyles(container);
+      this.runPhpSpaScripts(container);
    }
 
    /**
@@ -729,17 +865,19 @@ class RuntimeManager {
     */
    static runInlineScripts(container) {
       const scripts = container.querySelectorAll("script");
+      const nonce = document.documentElement.getAttribute('x-phpspa');
 
       scripts.forEach((script) => {
          // Use base64 encoded content as unique identifier
-         const contentHash = btoa(script.textContent.trim());
+         const contentHash = utf8ToBase64(script.textContent.trim());
 
          // Skip if this script has already been executed
-         if (!this.executedScripts.has(contentHash)) {
+         if (!this.executedScripts.has(contentHash) && script.textContent.trim() !== "") {
             this.executedScripts.add(contentHash);
 
             // Create new script element
             const newScript = document.createElement("script");
+            newScript.nonce = nonce;
 
             // Copy all attributes except the data-type identifier
             for (const attribute of script.attributes) {
@@ -761,6 +899,58 @@ class RuntimeManager {
          }
       });
    }
+
+
+   static runPhpSpaScripts(container) {
+      const scripts = container.querySelectorAll("phpspa-script, script[data-type=\"phpspa/script\"]");
+
+      scripts.forEach(async (script) => {
+         const scriptUrl = script.getAttribute('src');
+         const nonce = document.documentElement.getAttribute('x-phpspa');
+
+         // Skip if this script has already been executed
+         if (!this.executedScripts.has(scriptUrl)) {
+            this.executedScripts.add(scriptUrl);
+
+            // Check cache first
+            if (this.ScriptsCachedContent[scriptUrl]) {
+               const newScript = document.createElement("script");
+               newScript.textContent = this.ScriptsCachedContent[scriptUrl];
+               newScript.type = 'text/javascript';
+               newScript.nonce = nonce;
+               
+               // Execute and immediately remove from DOM
+               document.head.appendChild(newScript).remove();
+               return;
+            }
+
+            const response = await fetch(scriptUrl, {
+               headers: {
+                  "X-Requested-With": "PHPSPA_REQUEST_SCRIPT",
+               },
+            });
+            
+            if (response.ok) {
+               const scriptContent = await response.text();
+               
+               // Create new script element
+               const newScript = document.createElement("script");
+               newScript.textContent = scriptContent;
+               newScript.type = 'text/javascript';
+               newScript.nonce = nonce;
+
+               // Execute and immediately remove from DOM
+               document.head.appendChild(newScript).remove();
+   
+               // Cache the fetched script content
+               this.ScriptsCachedContent[scriptUrl] = scriptContent;
+            } else {
+               console.error(`Failed to load script from ${scriptUrl}: ${response.statusText}`);
+            }
+         }
+      });
+   }
+
 
    /**
     * Clears all executed scripts from the runtime manager.
@@ -784,17 +974,19 @@ class RuntimeManager {
     */
    static runInlineStyles(container) {
       const styles = container.querySelectorAll("style");
+      const nonce = document.documentElement.getAttribute('x-phpspa');
 
       styles.forEach((style) => {
          // Use base64 encoded content as unique identifier
-         const contentHash = btoa(style.textContent.trim());
+         const contentHash = utf8ToBase64(style.textContent.trim());
 
          // Skip if this style has already been injected
-         if (!this.executedStyles.has(contentHash)) {
+         if (!this.executedStyles.has(contentHash) && style.textContent.trim() !== "") {
             this.executedStyles.add(contentHash);
 
             // Create new style element
             const newStyle = document.createElement("style");
+            newStyle.nonce = nonce;
 
             // Copy all attributes except the data-type identifier
             for (const attribute of style.attributes) {
@@ -891,7 +1083,7 @@ if (typeof __call !== "function") {
 }
 
 /**
- * Initialize phpSPA global object
+ * Initialize PhpSPA global object
  * Makes the phpspa class available globally for easy access
  */
 (function () {
